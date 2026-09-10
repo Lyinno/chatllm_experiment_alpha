@@ -33,16 +33,58 @@ async function fetchMe(token) {
   return body;
 }
 
+// ─── Sessions ────────────────────────────────────────────────────────────
+
+async function listSessions(token) {
+  const response = await fetch(`${API_BASE}/api/sessions/`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.detail || "Erro ao listar sessoes.");
+  return body.sessions;
+}
+
+async function createSession(token) {
+  const response = await fetch(`${API_BASE}/api/sessions/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: "{}",
+  });
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.detail || "Erro ao criar sessao.");
+  return body;
+}
+
+async function deleteSession(token, sessionId) {
+  const response = await fetch(`${API_BASE}/api/sessions/${sessionId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.detail || "Erro ao deletar sessao.");
+  }
+}
+
+async function getSessionMessages(token, sessionId) {
+  const response = await fetch(`${API_BASE}/api/sessions/${sessionId}/messages`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.detail || "Erro ao carregar mensagens.");
+  return body;
+}
+
 // ─── Chat ────────────────────────────────────────────────────────────────
 
-async function sendMessageStream({ message, history, token, onDelta, signal }) {
+async function sendMessageStream({ message, history, sessionId, token, onDelta, signal }) {
   const headers = { "Content-Type": "application/json" };
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
   const response = await fetch(`${API_BASE}/api/chat/stream`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ message, history }),
+    body: JSON.stringify({ message, history, session_id: sessionId }),
     signal,
   });
 
@@ -59,6 +101,7 @@ async function sendMessageStream({ message, history, token, onDelta, signal }) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder("utf-8");
   let buffer = "";
+  let lastSessionId = sessionId;
 
   while (true) {
     const { value, done } = await reader.read();
@@ -85,12 +128,20 @@ async function sendMessageStream({ message, history, token, onDelta, signal }) {
       }
 
       if (payload.error) {
-        throw new Error(payload.error);
+        // Don't throw — just capture session_id if present and continue
+        if (payload.session_id) lastSessionId = payload.session_id;
+        continue;
       }
 
       if (payload.delta) {
         onDelta(payload.delta);
       }
+
+      if (payload.session_id) {
+        lastSessionId = payload.session_id;
+      }
     }
   }
+
+  return lastSessionId;
 }

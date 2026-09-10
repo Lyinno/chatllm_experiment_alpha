@@ -5,6 +5,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
+from backend.deps import get_current_user
 from backend.models import User
 from backend.schemas.auth import TokenResponse, UserCreate, UserLogin, UserResponse
 from backend.services.auth import (
@@ -65,35 +66,5 @@ def logout() -> dict[str, str]:
 
 
 @router.get("/me", response_model=UserResponse)
-def get_current_user(
-    credentials: HTTPAuthorizationCredentials | None = Depends(security),
-    db: Session = Depends(get_db),
-) -> UserResponse:
-    if credentials is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated",
-        )
-
-    payload = decode_access_token(credentials.credentials)
-    if payload is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-        )
-
-    user_id = payload.get("sub")
-    if user_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token payload",
-        )
-
-    user = db.query(User).filter(User.id == int(user_id)).first()
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found",
-        )
-
+def get_current_user_endpoint(user: User = Depends(get_current_user)) -> UserResponse:
     return UserResponse.model_validate(user)
