@@ -1,9 +1,47 @@
 const API_BASE = window.location.origin;
 
-async function sendMessageStream({ message, history, onDelta, signal }) {
-  const response = await fetch(`${API_BASE}/api/chat/stream`, {
+// ─── Auth ────────────────────────────────────────────────────────────────
+
+async function signup(email, password) {
+  const response = await fetch(`${API_BASE}/api/auth/signup`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.detail || "Erro ao cadastrar.");
+  return body;
+}
+
+async function login(email, password) {
+  const response = await fetch(`${API_BASE}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.detail || "Erro ao logar.");
+  return body;
+}
+
+async function fetchMe(token) {
+  const response = await fetch(`${API_BASE}/api/auth/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.detail || "Erro ao obter usuario.");
+  return body;
+}
+
+// ─── Chat ────────────────────────────────────────────────────────────────
+
+async function sendMessageStream({ message, history, token, onDelta, signal }) {
+  const headers = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const response = await fetch(`${API_BASE}/api/chat/stream`, {
+    method: "POST",
+    headers,
     body: JSON.stringify({ message, history }),
     signal,
   });

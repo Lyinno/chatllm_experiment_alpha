@@ -4,7 +4,85 @@ function createMessageId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function AuthScreen({ onAuth }) {
+  const [mode, setMode] = useState("login"); // "login" | "signup"
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const switchMode = (newMode) => {
+    setMode(newMode);
+    setEmail("");
+    setPassword("");
+    setAuthError("");
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setAuthError("");
+    setLoading(true);
+    try {
+      if (mode === "login") {
+        const result = await login(email, password);
+        localStorage.setItem("token", result.access_token);
+        localStorage.setItem("user", JSON.stringify(result.user));
+        onAuth(result.user, result.access_token);
+      } else {
+        await signup(email, password);
+        switchMode("login");
+      }
+    } catch (err) {
+      setAuthError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <main className="app-shell">
+      <header className="app-header">
+        <div className="brand">ChatLLM Lab</div>
+      </header>
+      <div className="auth-container">
+        <form className="auth-form" onSubmit={handleSubmit}>
+          <h2>{mode === "login" ? "Entrar" : "Cadastrar"}</h2>
+          {authError && <div className="note error">{authError}</div>}
+          <input
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            autoFocus
+          />
+          <input
+            type="password"
+            placeholder="Senha"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            minLength={6}
+          />
+          <button type="submit" disabled={loading}>
+            {loading ? "Aguarde..." : mode === "login" ? "Entrar" : "Cadastrar"}
+          </button>
+          <p className="auth-toggle">
+            {mode === "login" ? (
+              <>Nao tem conta? <a href="#" onClick={(e) => { e.preventDefault(); switchMode("signup"); }}>Cadastre-se</a></>
+            ) : (
+              <>Ja tem conta? <a href="#" onClick={(e) => { e.preventDefault(); switchMode("login"); }}>Entrar</a></>
+            )}
+          </p>
+        </form>
+      </div>
+    </main>
+  );
+}
+
 function App() {
+  const [user, setUser] = useState(null);
+  const [token, setToken] = useState(null);
   const [messages, setMessages] = useState([
     {
       id: createMessageId(),
@@ -17,6 +95,21 @@ function App() {
   const [error, setError] = useState("");
   const messagesRef = useRef(null);
   const abortControllerRef = useRef(null);
+
+  // Restore session from localStorage
+  useEffect(() => {
+    const savedToken = localStorage.getItem("token");
+    const savedUser = localStorage.getItem("user");
+    if (savedToken && savedUser) {
+      try {
+        setUser(JSON.parse(savedUser));
+        setToken(savedToken);
+      } catch {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+      }
+    }
+  }, []);
 
   const chatHistory = useMemo(
     () => messages.filter((msg) => msg.role === "user" || msg.role === "assistant"),
@@ -38,6 +131,20 @@ function App() {
     abortControllerRef.current?.abort();
     abortControllerRef.current = null;
     setBusy(false);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    setUser(null);
+    setToken(null);
+    setMessages([
+      {
+        id: createMessageId(),
+        role: "assistant",
+        content: "Bem-vindo ao ChatLLM Lab. Como posso ajudar voce hoje?",
+      },
+    ]);
   };
 
   const onSubmit = async (event, inputRef) => {
@@ -63,6 +170,7 @@ function App() {
       await sendMessageStream({
         message: cleaned,
         history: chatHistory,
+        token,
         signal: abortController.signal,
         onDelta: (delta) => {
           setMessages((prev) =>
@@ -108,10 +216,18 @@ function App() {
     }
   };
 
+  if (!user) {
+    return <AuthScreen onAuth={(u, t) => { setUser(u); setToken(t); }} />;
+  }
+
   return (
     <main className="app-shell">
       <header className="app-header">
         <div className="brand">ChatLLM Lab</div>
+        <div className="user-info">
+          <span className="user-email">{user.email}</span>
+          <button className="logout-btn" onClick={handleLogout}>Sair</button>
+        </div>
       </header>
 
       <section className="messages" aria-live="polite" ref={messagesRef}>
@@ -133,7 +249,7 @@ function App() {
         onStop={onStop}
       />
 
-      <div className="warning-banner">Lembre-se, você precisa focar no experimento!!!</div>
+      <div className="warning-banner">Lembre-se, voce precisa focar no experimento!!!</div>
     </main>
   );
 }
